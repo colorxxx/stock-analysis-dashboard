@@ -1054,7 +1054,7 @@ with st.sidebar:
     # 여러 티커 입력 (쉼표로 구분)
 
     # 선택된 그룹의 티커 불러오기
-    if selected_group == "엄선된종목":
+    if selected_group == "기본":
         default_tickers = "AAPL, MSFT, GOOGL, TSLA, AMZN, NVDA, META, CRWD, INOD, BBAI, ANET, AEHR, CEVA, IBM, NICE, ADBE, STGW, AUDC, SPR, TNXP, ENPH, SMCI, KOPN, BLDP, TLS, SSYS, LQDT, ABSI, SLDP, INVZ, VVX, DEFT, BLNK, ARDX, SGML, SEZL, QUBT, RGTI, QBTS, CHGG, SOFI, SHOP, COIN, HOOD, TSM, AMD, MU, PLTR, AVGO, RKLB, ASTS, APP, QS, NEE, FLNC, EOSE, CCJ, SMR, CEG, VST, OKLO, ORCL, APLD, AIRO, CIFR, NBIS, IONQ, CRCL, BITI"
     else:
         default_tickers = ", ".join(favorites.get(selected_group, []))
