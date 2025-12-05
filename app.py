@@ -8,6 +8,7 @@ import os
 import requests
 from pandas_datareader import data as pdr
 import sqlite3
+from perplexity_analyzer import StockAnalyzer
 
 # 페이지 설정
 
@@ -1349,21 +1350,69 @@ with tab1:
 
                     recent_data = df[['Close', 'MA5', 'MA20']].tail(7).sort_index(ascending=False)
 
-                    recent_data.columns = ['종가', 'EMA5', 'EMA20'] 
+                    recent_data.columns = ['종가', 'EMA5', 'EMA20']
 
-                    recent_data.index = recent_data.index.strftime('%m/%d') 
+                    recent_data.index = recent_data.index.strftime('%m/%d')
 
-                    st.markdown("##### 최근 데이터") 
+                    st.markdown("##### 최근 데이터")
 
-                    st.dataframe( 
+                    st.dataframe(
 
-                        recent_data.style.format("{:.1f}"), 
+                        recent_data.style.format("{:.1f}"),
 
-                        use_container_width=True, 
+                        use_container_width=True,
 
-                        height=180 
+                        height=180
 
-                    ) 
+                    )
+
+                    # AI 분석 (시그널 발생 날짜 기준) - 자동 조회
+                    st.markdown("---")
+                    st.markdown("##### 🤖 AI 시그널 분석")
+
+                    if result['last_signal_date']:
+                        analysis_date = result['last_signal_date']
+                        signal_type_map = {1: 'BUY', -1: 'SELL'}
+                        signal_type = signal_type_map.get(result['last_signal_type'], None)
+
+                        # 상태별 시그널 타입 추가
+                        if result['status'] == 'STRONG BUY':
+                            signal_type = 'STRONG BUY'
+                        elif result['status'] == 'WARNING':
+                            signal_type = 'WARNING'
+
+                        st.info(f"📅 시그널 발생일: **{analysis_date}** ({signal_type})")
+
+                        # AI 분석 자동 조회
+                        try:
+                            from perplexity_analyzer import get_cached_analysis
+
+                            # 캐시 확인
+                            cached_result = get_cached_analysis(ticker, analysis_date)
+
+                            if cached_result:
+                                # 캐시된 결과 표시
+                                st.success("✅ AI 분석")
+                                st.markdown("**📊 분석 결과:**")
+                                st.markdown(cached_result['analysis'])
+
+                                if cached_result.get('citations'):
+                                    st.markdown("---")
+                                    st.markdown("**📚 참고 자료:**")
+                                    with st.container():
+                                        for i, citation in enumerate(cached_result['citations'], 1):
+                                            st.caption(f"{i}. {citation}")
+                            else:
+                                # 캐시 없음 - 다음 업데이트 대기
+                                st.info("ℹ️ 분석이 준비되지 않았습니다. 다음 업데이트를 기다려주세요.")
+
+                        except ValueError as e:
+                            st.error(f"⚠️ API 키 오류: {str(e)}")
+                            st.info("💡 .env 파일에 PERPLEXITY_API_KEY를 설정해주세요.")
+                        except Exception as e:
+                            st.error(f"❌ 오류 발생: {str(e)}")
+                    else:
+                        st.warning("⚠️ 시그널 발생 내역이 없습니다.") 
 
         # 에러 종목 
 
