@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 import json
 import os
 import requests
-from pandas_datareader import data as pdr
 import sqlite3
 from perplexity_analyzer import StockAnalyzer
 
@@ -404,69 +403,12 @@ def get_cached_macro_data(indicator, ticker, period="1y"):
     return df
 
 def get_cached_fed_rate(period="1y"):
-    """캐시된 기준금리 데이터 가져오기 및 업데이트"""
-    conn = sqlite3.connect(DB_FILE)
+    """캐시된 기준금리 데이터 가져오기 (FRED API 사용 중단)"""
+    # Note: pandas_datareader의 distutils 의존성 문제로 인해 FRED 데이터 사용 중단
+    # 대신 yfinance의 ^IRX (13 Week Treasury Bill) 사용 가능하지만 현재는 비활성화
 
-    # 기존 데이터 가져오기
-    query = 'SELECT date, rate FROM fed_rate ORDER BY date'
-    df = pd.read_sql_query(query, conn)
-
-    last_date = get_last_date('fed_rate')
-
-    # 필요한 기간 계산
-    period_map = {"1mo": 30, "3mo": 90, "6mo": 180, "1y": 365, "2y": 730}
-    days = period_map.get(period, 365)
-    start_date_target = datetime.now() - timedelta(days=days)
-
-    # 업데이트 필요 여부 확인
-    if last_date is None:
-        # 데이터가 없으면 전체 가져오기
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days)
-        new_df = pdr.DataReader('DFF', 'fred', start_date, end_date)
-    else:
-        last_datetime = pd.to_datetime(last_date)
-        today = datetime.now()
-
-        # 오늘 데이터가 이미 있으면 DB 데이터만 반환
-        if last_datetime.date() >= (today - timedelta(days=3)).date():
-            if not df.empty:
-                df['date'] = pd.to_datetime(df['date'])
-                df = df.set_index('date')
-                df = df[df.index >= start_date_target]
-                df.columns = ['DFF']
-                return df
-
-        # 마지막 날짜 이후 데이터만 가져오기
-        new_df = pdr.DataReader('DFF', 'fred', last_datetime, today)
-
-        if not new_df.empty:
-            new_df = new_df[new_df.index > last_datetime]
-
-    # 새 데이터 저장
-    if not new_df.empty:
-        for idx, row in new_df.iterrows():
-            try:
-                cursor = conn.cursor()
-                cursor.execute(
-                    'INSERT OR REPLACE INTO fed_rate (date, rate) VALUES (?, ?)',
-                    (idx.strftime('%Y-%m-%d'), row['DFF'])
-                )
-                conn.commit()
-            except:
-                pass
-
-    # 전체 데이터 다시 가져오기
-    df = pd.read_sql_query(query, conn)
-    conn.close()
-
-    if not df.empty:
-        df['date'] = pd.to_datetime(df['date'])
-        df = df.set_index('date')
-        df = df[df.index >= start_date_target]
-        df.columns = ['DFF']
-
-    return df
+    # 빈 DataFrame 반환
+    return pd.DataFrame()
 
 # DB 초기화
 init_db()
@@ -1536,14 +1478,14 @@ with tab2:
                 errors.append("CNN 공포탐욕지수 데이터를 가져올 수 없습니다.")
 
             fed_rate_df = get_cached_fed_rate(period=period)
-            if fed_rate_df is None or fed_rate_df.empty:
-                errors.append("미국 기준금리 데이터를 가져올 수 없습니다.")
+            # Note: 기준금리 데이터는 현재 비활성화됨 (pandas_datareader 의존성 문제)
+            has_fed_rate = fed_rate_df is not None and not fed_rate_df.empty
 
             if errors:
                 for error in errors:
                     st.error(error)
 
-            if not sp500_df.empty and not vix_df.empty and fng_data and fed_rate_df is not None and not fed_rate_df.empty:
+            if not sp500_df.empty and not vix_df.empty and fng_data:
                 # 현재 값 표시
                 col1, col2, col3, col4 = st.columns(4)
 
@@ -1580,11 +1522,14 @@ with tab2:
                     st.metric(f"{emoji} CNN 공포탐욕", f"{fng_current:.0f}/100", f"{fng_rating}")
 
                 with col4:
-                    # 미국 기준금리
-                    fed_rate_current = fed_rate_df['DFF'].iloc[-1]
-                    fed_rate_prev = fed_rate_df['DFF'].iloc[-2] if len(fed_rate_df) > 1 else fed_rate_current
-                    fed_rate_change = fed_rate_current - fed_rate_prev
-                    st.metric("💵 기준금리", f"{fed_rate_current:.2f}%", f"{fed_rate_change:+.2f}%p")
+                    # 미국 기준금리 (현재 비활성화됨)
+                    if has_fed_rate:
+                        fed_rate_current = fed_rate_df['DFF'].iloc[-1]
+                        fed_rate_prev = fed_rate_df['DFF'].iloc[-2] if len(fed_rate_df) > 1 else fed_rate_current
+                        fed_rate_change = fed_rate_current - fed_rate_prev
+                        st.metric("💵 기준금리", f"{fed_rate_current:.2f}%", f"{fed_rate_change:+.2f}%p")
+                    else:
+                        st.metric("💵 기준금리", "N/A", "데이터 없음")
                 
                 st.markdown("---")
                 
@@ -1606,7 +1551,7 @@ with tab2:
                     vix_df.index = vix_df.index.tz_localize(None)
                 if fng_df.index.tz is not None:
                     fng_df.index = fng_df.index.tz_localize(None)
-                if fed_rate_df.index.tz is not None:
+                if has_fed_rate and fed_rate_df.index.tz is not None:
                     fed_rate_df.index = fed_rate_df.index.tz_localize(None)
 
                 # 날짜 범위 맞추기
@@ -1617,17 +1562,27 @@ with tab2:
                 sp500_filtered = sp500_df[sp500_df.index >= start_date]
                 vix_filtered = vix_df[vix_df.index >= start_date]
                 fng_filtered = fng_df[(fng_df.index >= start_date) & (fng_df.index <= end_date)]
-                fed_rate_filtered = fed_rate_df[(fed_rate_df.index >= start_date) & (fed_rate_df.index <= end_date)]
-                
-                # 통합 차트 (4개 서브플롯)
+                if has_fed_rate:
+                    fed_rate_filtered = fed_rate_df[(fed_rate_df.index >= start_date) & (fed_rate_df.index <= end_date)]
+
+                # 통합 차트 (3 또는 4개 서브플롯)
                 from plotly.subplots import make_subplots
 
+                if has_fed_rate:
+                    subplot_titles_list = ('S&P 500', 'VIX (변동성 지수)', 'CNN 공포탐욕지수', '미국 기준금리')
+                    rows_count = 4
+                else:
+                    subplot_titles_list = ('S&P 500', 'VIX (변동성 지수)', 'CNN 공포탐욕지수')
+                    rows_count = 3
+
+                row_heights_list = [0.25, 0.25, 0.25, 0.25] if has_fed_rate else [0.33, 0.33, 0.34]
+
                 fig = make_subplots(
-                    rows=4, cols=1,
+                    rows=rows_count, cols=1,
                     shared_xaxes=True,
                     vertical_spacing=0.05,
-                    subplot_titles=('S&P 500', 'VIX (변동성 지수)', 'CNN 공포탐욕지수', '미국 기준금리'),
-                    row_heights=[0.25, 0.25, 0.25, 0.25]
+                    subplot_titles=subplot_titles_list,
+                    row_heights=row_heights_list
                 )
 
                 # 1. S&P 500
@@ -1672,19 +1627,20 @@ with tab2:
                     row=3, col=1
                 )
 
-                # 4. 미국 기준금리
-                fig.add_trace(
-                    go.Scatter(
-                        x=fed_rate_filtered.index,
-                        y=fed_rate_filtered['DFF'],
-                        name='기준금리',
-                        line=dict(color='#8E44AD', width=3),
-                        fill='tozeroy',
-                        fillcolor='rgba(142, 68, 173, 0.1)',
-                        hovertemplate='<b>기준금리</b><br>%{x}<br>%{y:.2f}%<extra></extra>'
-                    ),
-                    row=4, col=1
-                )
+                # 4. 미국 기준금리 (조건부)
+                if has_fed_rate:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=fed_rate_filtered.index,
+                            y=fed_rate_filtered['DFF'],
+                            name='기준금리',
+                            line=dict(color='#8E44AD', width=3),
+                            fill='tozeroy',
+                            fillcolor='rgba(142, 68, 173, 0.1)',
+                            hovertemplate='<b>기준금리</b><br>%{x}<br>%{y:.2f}%<extra></extra>'
+                        ),
+                        row=4, col=1
+                    )
 
                 # Y축 설정 - 동적 범위 조정
                 # S&P 500
@@ -1717,16 +1673,17 @@ with tab2:
                     tickfont=dict(size=10)
                 )
 
-                # 미국 기준금리
-                fed_min = fed_rate_filtered['DFF'].min()
-                fed_max = fed_rate_filtered['DFF'].max()
-                fed_padding = (fed_max - fed_min) * 0.1  # 10% 여유
-                fig.update_yaxes(
-                    title_text="금리 (%)",
-                    row=4, col=1,
-                    tickfont=dict(size=10),
-                    range=[fed_min - fed_padding, fed_max + fed_padding]
-                )
+                # 미국 기준금리 (조건부)
+                if has_fed_rate:
+                    fed_min = fed_rate_filtered['DFF'].min()
+                    fed_max = fed_rate_filtered['DFF'].max()
+                    fed_padding = (fed_max - fed_min) * 0.1  # 10% 여유
+                    fig.update_yaxes(
+                        title_text="금리 (%)",
+                        row=4, col=1,
+                        tickfont=dict(size=10),
+                        range=[fed_min - fed_padding, fed_max + fed_padding]
+                    )
 
                 # X축 설정
                 fig.update_xaxes(showgrid=True, gridcolor='#E8E8E8', gridwidth=0.5)
