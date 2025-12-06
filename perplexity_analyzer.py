@@ -190,13 +190,31 @@ class StockAnalyzer:
         signal_type: Optional[str] = None
     ) -> str:
         """분석용 프롬프트 생성"""
+        # Determine the appropriate question based on signal type
+        if signal_type == 'BUY':
+            question_kr = "왜 주가가 올랐나요?"
+            question_en = "Why did stock price rise?"
+        elif signal_type == 'SELL':
+            question_kr = "왜 주가가 떨어졌나요?"
+            question_en = "Why did stock price fall?"
+        elif signal_type == 'STRONG BUY':
+            question_kr = "왜 주가가 반등할 가능성이 있나요?"
+            question_en = "Why might the stock price rebound?"
+        elif signal_type == 'WARNING':
+            question_kr = "왜 주가가 하락할 위험이 있나요?"
+            question_en = "Why might the stock price fall?"
+        else:
+            # Fallback for None or unexpected signal types
+            question_kr = "주가에 어떤 영향을 미쳤나요?"
+            question_en = "How did this affect the stock price?"
+
         if is_korean:
             return f"""
 {ticker} 주식의 {date} 전후 뉴스를 검색하세요.
 
 검색 결과를 바탕으로 **3-5문장**으로 설명:
 - {date} 전후 어떤 뉴스/실적/발표가 있었나요?
-- 왜 주가가 {'올랐나요' if signal_type in ['BUY', 'STRONG BUY'] else '떨어졌나요'}?
+- {question_kr}
 - 구체적인 숫자(실적, 계약 규모 등)가 있다면 포함하세요
 
 **금지사항**: 차트, 이동평균선, RSI, MACD 등 기술적 용어 금지. "접근 불가" 같은 핑계 금지.
@@ -209,7 +227,7 @@ Search for {ticker} stock news around {date}.
 
 Based on search results, explain in 3-5 sentences:
 - What news/earnings/announcements happened around {date}?
-- Why did stock price {'rise' if signal_type in ['BUY', 'STRONG BUY'] else 'fall'}?
+- {question_en}
 - Include specific numbers (earnings, deal size, etc.) if available
 
 **Prohibited**: Charts, moving averages, RSI, MACD, technical terms. No excuses like "cannot access".
